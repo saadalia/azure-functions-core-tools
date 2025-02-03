@@ -274,11 +274,12 @@ namespace Azure.Functions.Cli.Helpers
         /// <returns></returns>
         public static async Task<bool> IsDotNet8(string projectPath)
         {
-            var csprojPath = FileSystemHelpers.GetFiles(projectPath, searchPattern: "*.csproj", searchOption: SearchOption.TopDirectoryOnly).Single();
+            var dllPath = ExtensionsHelper.GetScriptFilePath();
 
-            var dotNetVersion = await GetTargetFramework(csprojPath);
+            var dotNetVersion = await GetTargetFramework(dllPath);
 
-            var result = dotNetVersion.Equals(TargetFramework.net8, StringComparison.OrdinalIgnoreCase);
+            var result = dotNetVersion.Contains(".NETCoreApp,Version=v8.0") ||
+                         dotNetVersion.Contains(".NET,Version=v8.0");
 
             return result;
         }
@@ -368,19 +369,18 @@ namespace Azure.Functions.Cli.Helpers
             }
         }
 
-        private static async Task<string> GetTargetFramework(string csprojPath)
+        private static async Task<string> GetTargetFramework(string dllPath)
         {
-            await using var stream = new FileStream(csprojPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            Assembly assembly = Assembly.LoadFrom(dllPath);
+            var targetFrameworkAttribute = (System.Runtime.Versioning.TargetFrameworkAttribute)
+                Attribute.GetCustomAttribute(assembly, typeof(System.Runtime.Versioning.TargetFrameworkAttribute));
 
-            var doc = await XDocument.LoadAsync(stream, LoadOptions.None, CancellationToken.None);
-            var targetFrameworkElement = doc.Root?.Element("PropertyGroup")?.Element("TargetFramework");
-
-            if (targetFrameworkElement == null)
+            if (targetFrameworkAttribute == null)
             {
                 throw new CliException("Could not find the TargetFramework element in the .csproj file.");
             }
 
-            return targetFrameworkElement.Value;
+            return targetFrameworkAttribute.FrameworkName;
         }
     }
 }
